@@ -22,6 +22,21 @@
 
 ## Installation
 
+### Download a release binary
+
+Prebuilt archives are published on [GitHub Releases][releases]. The installer script grabs the latest compatible asset (or a specific version if `TENGOK_VERSION` is set), unpacks it, and drops the binary into `/usr/local/bin` by default.
+
+```bash
+# Install latest release (requires curl + tar)
+curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash
+
+# Optional: pick a version / install dir
+TENGOK_VERSION=v0.1.1 TENGOK_INSTALL_DIR=$HOME/.local/bin \
+  curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash
+```
+
+### Build from source
+
 ```bash
 # Build & install locally
 cargo install --path .
@@ -70,4 +85,6 @@ When you’re ready to cut a release, rebuild with `cargo build --release` and s
 ---
 
 Questions or ideas? Open an issue or pull request once the repo hits GitHub! Happy scanning. 🚀
+
+[releases]: https://github.com/skolhustick/tengok/releases
 
