@@ -22,7 +22,15 @@
 
 ## Installation
 
-### 1. One-line installer (recommended)
+### 1. cargo install (Rust users)
+
+If you already have Rust installed, the quickest path is via [crates.io](https://crates.io/crates/tengok):
+
+```bash
+cargo install tengok
+```
+
+### 2. One-line installer (recommended for binaries)
 
 We publish signed binaries for macOS (arm64/x86_64) and Linux (arm64/x86_64) on [GitHub Releases][releases]. Running the installer with **no flags** walks you through an interactive prompt so you can decide whether to install locally or system-wide before anything is written.
 
@@ -55,7 +63,7 @@ TENGOK_VERSION=v0.1.1 \
   curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash -s -- --global --force
 ```
 
-### 2. Manual download
+### 3. Manual download
 
 Every release bundles four standalone binaries in `dist/`:
 
@@ -74,7 +82,7 @@ chmod +x tengok
 mv tengok ~/.local/bin/
 ```
 
-### 3. Build from source
+### 4. Build from source
 
 ```bash
 # Build & install locally
