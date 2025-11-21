@@ -2,7 +2,6 @@
 set -euo pipefail
 
 REPO="skolhustick/tengok"
-INSTALL_DIR="${TENGOK_INSTALL_DIR:-/usr/local/bin}"
 VERSION="${TENGOK_VERSION:-latest}"
 
 err() {
@@ -31,7 +30,7 @@ else
     ASSET="tengok-linux-${ARCH}"
 fi
 
-# Version handling
+# Release path
 if [[ "$VERSION" == "latest" ]]; then
     RELEASE_PATH="latest/download"
 else
@@ -39,19 +38,45 @@ else
 fi
 
 URL="https://github.com/${REPO}/releases/${RELEASE_PATH}/${ASSET}"
-
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "${TMPDIR}"' EXIT
 
 echo "Downloading ${ASSET}..."
 curl -fsSL "${URL}" -o "${TMPDIR}/tengok" || err "failed to download release asset"
-
-echo "Making it executable..."
 chmod +x "${TMPDIR}/tengok"
 
-echo "Installing to ${INSTALL_DIR}/tengok ..."
-mkdir -p "${INSTALL_DIR}" || err "cannot create install dir"
-mv "${TMPDIR}/tengok" "${INSTALL_DIR}/tengok" || err "failed to move binary"
+echo ""
+echo "Where do you want to install tengok?"
+echo "1) Only for you   (~/.local/bin)"
+echo "2) System-wide    (/usr/local/bin) [requires sudo]"
+echo ""
 
-echo "✅ Installed at ${INSTALL_DIR}/tengok"
-echo "   Run: tengok --help"
+read -rp "Choose option [1/2]: " CHOICE
+
+case "$CHOICE" in
+    1)
+        INSTALL_DIR="$HOME/.local/bin"
+        mkdir -p "$INSTALL_DIR"
+        mv "${TMPDIR}/tengok" "$INSTALL_DIR/tengok" || err "failed to move binary"
+        echo "✅ Installed to $INSTALL_DIR/tengok"
+        # suggest PATH fix if needed
+        if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+            echo ""
+            echo "⚠️  $HOME/.local/bin is not on your PATH."
+            echo "   Add this to your shell config:"
+            echo "     export PATH=\"\$HOME/.local/bin:\$PATH\""
+        fi
+        ;;
+    2)
+        INSTALL_DIR="/usr/local/bin"
+        sudo mkdir -p "$INSTALL_DIR"
+        sudo mv "${TMPDIR}/tengok" "$INSTALL_DIR/tengok" || err "failed to move binary"
+        echo "✅ Installed to /usr/local/bin/tengok"
+        ;;
+    *)
+        err "invalid choice"
+        ;;
+esac
+
+echo ""
+echo "Run 'tengok --help' to get started."

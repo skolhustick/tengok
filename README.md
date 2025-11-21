@@ -27,12 +27,7 @@
 Prebuilt archives are published on [GitHub Releases][releases]. The installer script grabs the latest compatible asset (or a specific version if `TENGOK_VERSION` is set), unpacks it, and drops the binary into `/usr/local/bin` by default.
 
 ```bash
-# Install latest release (requires curl + tar)
 curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash
-
-# Optional: pick a version / install dir
-TENGOK_VERSION=v0.1.1 TENGOK_INSTALL_DIR=$HOME/.local/bin \
-  curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash
 ```
 
 ### Build from source
