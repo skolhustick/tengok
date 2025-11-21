@@ -9,9 +9,15 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
 echo ""
-echo "==> Building macOS (native)"
+echo "==> Building macOS arm64 (native if you're on M Mac)"
 cargo build --release
-cp "target/release/$BIN_NAME" "$DIST_DIR/${BIN_NAME}-macos"
+cp "target/release/$BIN_NAME" "$DIST_DIR/${BIN_NAME}-macos-arm64"
+
+echo ""
+echo "==> Building macOS x86_64 (cross via Rosetta cargo)"
+cargo build --release --target x86_64-apple-darwin
+cp "target/x86_64-apple-darwin/release/$BIN_NAME" \
+   "$DIST_DIR/${BIN_NAME}-macos-x86_64"
 
 echo ""
 echo "==> Building Linux x86_64 (musl)"
@@ -27,6 +33,4 @@ cp "target/aarch64-unknown-linux-musl/release/$BIN_NAME" \
 
 echo ""
 echo "==> Build complete!"
-echo ""
-echo "Files created in $DIST_DIR/:"
 ls -lh "$DIST_DIR"
