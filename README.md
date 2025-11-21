@@ -22,15 +22,59 @@
 
 ## Installation
 
-### Download a release binary
+### 1. One-line installer (recommended)
 
-Prebuilt archives are published on [GitHub Releases][releases]. The installer script grabs the latest compatible asset (or a specific version if `TENGOK_VERSION` is set), unpacks it, and drops the binary into `/usr/local/bin` by default.
+We publish signed binaries for macOS (arm64/x86_64) and Linux (arm64/x86_64) on [GitHub Releases][releases]. Running the installer with **no flags** walks you through an interactive prompt so you can decide whether to install locally or system-wide before anything is written.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash
 ```
 
-### Build from source
+During the prompt you’ll pick where the binary should live:
+
+| Mode | Description | Flag |
+| --- | --- | --- |
+| Local | Installs to `~/.local/bin` (no sudo) | `--local` |
+| Global | Installs to `/usr/local/bin` (sudo move) | `--global` |
+
+Additional options:
+
+| Option | Description |
+| --- | --- |
+| `--force` | Overwrite an existing binary without prompting. |
+| `TENGOK_VERSION=v0.1.1` | Pin a specific release (default = latest). |
+
+Examples:
+
+```bash
+# Non-interactive local install (skips the prompt)
+curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash -s -- --local
+
+# Install a specific tagged release globally, forcing overwrite
+TENGOK_VERSION=v0.1.1 \
+  curl -fsSL https://raw.githubusercontent.com/skolhustick/tengok/main/install.sh | bash -s -- --global --force
+```
+
+### 2. Manual download
+
+Every release bundles four standalone binaries in `dist/`:
+
+| Asset | Target |
+| --- | --- |
+| `tengok-macos-arm64` | Apple Silicon macOS |
+| `tengok-macos-x86_64` | Intel macOS |
+| `tengok-linux-arm64` | Linux ARM64 (musl) |
+| `tengok-linux-x86_64` | Linux x86_64 (musl) |
+
+Download the asset that matches your machine, `chmod +x`, and move it somewhere on your `PATH`:
+
+```bash
+curl -L https://github.com/skolhustick/tengok/releases/latest/download/tengok-linux-x86_64 -o tengok
+chmod +x tengok
+mv tengok ~/.local/bin/
+```
+
+### 3. Build from source
 
 ```bash
 # Build & install locally
