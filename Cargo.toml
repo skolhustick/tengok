@@ -14,9 +14,9 @@ strip = "symbols"
 
 [package]
 name = "tengok"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
-description = "Your folder summary CLI"
+description = "Fast codebase stats viewer."
 repository = "https://github.com/skolhustick/tengok"
 homepage = "https://github.com/skolhustick/tengok"
 readme = "README.md"
