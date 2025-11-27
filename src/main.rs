@@ -2,13 +2,15 @@ use std::{
     collections::HashMap,
     env,
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process,
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use crossbeam_channel::unbounded;
+use crossterm::terminal;
 use humansize::{DECIMAL, format_size};
 use ignore::{WalkBuilder, WalkState};
 use owo_colors::OwoColorize;
@@ -199,6 +201,10 @@ fn scan_dir(config: &Arc<Config>) -> io::Result<Summary> {
     let mut summary = Summary::default();
     let mut dir_sizes: HashMap<PathBuf, u64> = HashMap::new();
 
+    let spinner_frames: &[char] = &['-', '\\', '|', '/'];
+    let mut spinner_idx: usize = 0;
+    let mut last_draw = Instant::now();
+
     for record in rx {
         summary.total_files += 1;
         summary.total_size += record.size;
@@ -219,6 +225,28 @@ fn scan_dir(config: &Arc<Config>) -> io::Result<Summary> {
         }
 
         *dir_sizes.entry(record.parent).or_insert(0) += record.size;
+
+        if !config.plain && last_draw.elapsed() >= Duration::from_millis(80) {
+            last_draw = Instant::now();
+            spinner_idx = (spinner_idx + 1) % spinner_frames.len();
+            let frame = spinner_frames[spinner_idx];
+            let path_str = display_relative_path(&record.path, &config.root);
+            let path_short = ellipsize_middle(&path_str, 40);
+            let files = format_num(summary.total_files);
+            let size = format_size(summary.total_size, DECIMAL);
+            let msg = format!(
+                "{} Scanning… {} files, {} ({})",
+                frame, files, size, path_short
+            );
+            let mut stderr = io::stderr();
+            let _ = write!(stderr, "\r{}", msg);
+            let _ = stderr.flush();
+        }
+    }
+
+    if !config.plain {
+        let mut stderr = io::stderr();
+        let _ = writeln!(stderr);
     }
 
     if let Some((dir, size)) = dir_sizes.into_iter().max_by_key(|(_, s)| *s) {
@@ -267,50 +295,77 @@ fn should_count_lines(path: &Path, size: u64, config: &Config) -> bool {
 fn print_report(config: &Config, summary: &Summary) {
     let title = format!("Folder Summary: {}", config.root.display());
     let size_human = format_size(summary.total_size, DECIMAL);
+    let files_value = format_num(summary.total_files);
+    let lines_value = format_num(summary.total_lines);
+    let files_value_with_unit = format!("{} Files", files_value);
+    let lines_value_with_unit = format!("{} Lines", lines_value);
 
     let (largest_dir_str, largest_dir_size) = match &summary.largest_dir {
-        Some((path, size)) => (path.display().to_string(), format_size(*size, DECIMAL)),
+        Some((path, size)) => (
+            display_relative_path(path, &config.root),
+            format_size(*size, DECIMAL),
+        ),
         None => ("-".to_string(), "-".to_string()),
     };
 
-    let (max_file_name, max_file_lines, max_file_size) = match &summary.max_lines_file {
+    let (max_file_path_raw, max_file_lines, max_file_size) = match &summary.max_lines_file {
         Some(f) => (
-            f.path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("<unknown>")
-                .to_string(),
+            display_relative_path(&f.path, &config.root),
             f.lines,
             format_size(f.size, DECIMAL),
         ),
         None => ("-".to_string(), 0, "-".to_string()),
     };
 
-    // Inner content width (excluding outer padding spaces)
-    const INNER_WIDTH: usize = 28;
+    let largest_dir_val = if largest_dir_str == "-" {
+        "-".to_string()
+    } else {
+        format!("{} ({})", largest_dir_str, largest_dir_size)
+    };
+    let max_file_val = if max_file_path_raw == "-" {
+        "-".to_string()
+    } else {
+        format!(
+            "{} ({} lines, {})",
+            max_file_path_raw,
+            format_num(max_file_lines),
+            max_file_size
+        )
+    };
 
-    // Helper to create a formatted row with label and value
-    // Label takes 14 chars, value takes 11 chars, leaving a couple of spaces for padding
-    fn format_row(label: &str, value: &str) -> (String, String) {
-        let label_truncated = truncate(label, 14);
-        let label_fmt = format!("{:<14}", label_truncated);
-        let value_fmt = format!("{:>11}", truncate(value, 11));
-        (label_fmt, value_fmt)
+    // Layout: label + spacing + value widths add up to inner width.
+    // The box grows to fit the widest value (typically the max-line file),
+    // but never exceeds the current terminal width; long values are then
+    // ellipsized in the middle to stay on a single row.
+    const LABEL_WIDTH: usize = 6;
+    const MIN_VALUE_WIDTH: usize = 24;
+    const MAX_VALUE_WIDTH: usize = 96;
+
+    let mut value_width = [
+        files_value_with_unit.as_str(),
+        size_human.as_str(),
+        lines_value_with_unit.as_str(),
+        largest_dir_val.as_str(),
+        max_file_val.as_str(),
+    ]
+    .into_iter()
+    .map(|s| UnicodeWidthStr::width(s))
+    .max()
+    .unwrap_or(0)
+    .clamp(MIN_VALUE_WIDTH, MAX_VALUE_WIDTH);
+
+    if let Ok((cols, _)) = terminal::size() {
+        let cols = cols as usize;
+        let max_inner = cols.saturating_sub(3); // borders + spaces
+        if max_inner > LABEL_WIDTH + 3 {
+            let max_value = max_inner.saturating_sub(LABEL_WIDTH + 3);
+            if max_value > 0 {
+                value_width = value_width.min(max_value);
+            }
+        }
     }
 
-    let (files_label, files_value_fmt) = format_row("Files:", &format_num(summary.total_files));
-    let (size_label, size_value_fmt) = format_row("Size:", &size_human);
-    let (lines_label, lines_value_fmt) =
-        format_row("Total Lines:", &format_num(summary.total_lines));
-    let largest_dir_val = format!("{} ({})", largest_dir_str, largest_dir_size);
-    let (largest_dir_label, largest_dir_value_fmt) = format_row("Largest Dir:", &largest_dir_val);
-    let max_file_val = format!(
-        "{} ({} lines, {})",
-        max_file_name,
-        format_num(max_file_lines),
-        max_file_size
-    );
-    let (max_file_label, max_file_value_fmt) = format_row("Max Lines File:", &max_file_val);
+    let inner_width = LABEL_WIDTH + 3 + value_width;
 
     // Color helpers
     let color_border = |s: &str| -> String {
@@ -336,7 +391,7 @@ fn print_report(config: &Config, summary: &Summary) {
     };
 
     // Box borders
-    let horizontal_raw = "─".repeat(INNER_WIDTH + 2);
+    let horizontal_raw = "─".repeat(inner_width + 2);
     let border = color_border(&horizontal_raw);
     let top_left = color_border("┌");
     let top_right = color_border("┐");
@@ -352,7 +407,7 @@ fn print_report(config: &Config, summary: &Summary) {
     let plain_mode = config.plain;
     let print_line = move |plain: &str, colored: String| {
         let visible = UnicodeWidthStr::width(plain);
-        let padding = INNER_WIDTH.saturating_sub(visible);
+        let padding = inner_width.saturating_sub(visible);
         let body = if plain_mode {
             plain.to_string()
         } else {
@@ -367,14 +422,27 @@ fn print_report(config: &Config, summary: &Summary) {
         );
     };
 
+    let format_row = |label: &str, value: &str| -> (String, String) {
+        let label_truncated = truncate(label, LABEL_WIDTH);
+        let label_fmt = format!("{:<label_w$}", label_truncated, label_w = LABEL_WIDTH);
+        let value_truncated = ellipsize_middle(value, value_width);
+        let value_fmt = format!("{:>value_w$}", value_truncated, value_w = value_width);
+        (label_fmt, value_fmt)
+    };
+
+    let (files_label, files_value_fmt) = format_row("[F]", &files_value_with_unit);
+    let (size_label, size_value_fmt) = format_row("[B]", &size_human);
+    let (lines_label, lines_value_fmt) = format_row("[L]", &lines_value_with_unit);
+    let (largest_label, largest_dir_value_fmt) = format_row("[D↑]", &largest_dir_val);
+    let (max_lines_label, max_file_value_fmt) = format_row("[L↑]", &max_file_val);
+
     println!("{}{}{}", top_left, border, top_right);
 
-    let title_plain = truncate(&title, INNER_WIDTH);
+    let title_plain = truncate(&title, inner_width);
     let title_colored = color_value(&title_plain);
     print_line(&title_plain, title_colored);
 
     println!("{}{}{}", divider, border, divider_right);
-
     let row_plain_and_colored = |label: &str, value: &str| {
         let plain = format!("{}   {}", label, value);
         let colored = format!("{}   {}", color_label(label), color_value(value));
@@ -384,10 +452,22 @@ fn print_report(config: &Config, summary: &Summary) {
     row_plain_and_colored(&files_label, &files_value_fmt);
     row_plain_and_colored(&size_label, &size_value_fmt);
     row_plain_and_colored(&lines_label, &lines_value_fmt);
-    row_plain_and_colored(&largest_dir_label, &largest_dir_value_fmt);
-    row_plain_and_colored(&max_file_label, &max_file_value_fmt);
+    row_plain_and_colored(&largest_label, &largest_dir_value_fmt);
+    row_plain_and_colored(&max_lines_label, &max_file_value_fmt);
 
     println!("{}{}{}", bottom_left, border, bottom_right);
+}
+
+fn display_relative_path(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .map(|p| {
+            if p.as_os_str().is_empty() {
+                ".".to_string()
+            } else {
+                p.display().to_string()
+            }
+        })
+        .unwrap_or_else(|_| path.display().to_string())
 }
 
 fn format_num(n: u64) -> String {
@@ -420,4 +500,51 @@ fn truncate(s: &str, max: usize) -> String {
         out.push(ch);
     }
     out
+}
+
+// Insert "…" in the middle to keep both ends visible within max chars
+fn ellipsize_middle(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len();
+    if len <= max {
+        return s.to_string();
+    }
+    if max == 1 {
+        return "…".to_string();
+    }
+
+    let keep = max - 1;
+    let front = keep / 2;
+    let back = keep - front;
+    let back_start = len - back;
+
+    let mut out = String::with_capacity(max);
+    for ch in chars.iter().take(front) {
+        out.push(*ch);
+    }
+    out.push('…');
+    for ch in chars.iter().skip(back_start) {
+        out.push(*ch);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ellipsize_leaves_short_strings_alone() {
+        assert_eq!(ellipsize_middle("short.txt", 20), "short.txt");
+    }
+
+    #[test]
+    fn ellipsize_compacts_middle_and_keeps_ends() {
+        let original = "somefilenameisverylong.txt";
+        assert_eq!(ellipsize_middle(original, 20), "somefilen…rylong.txt");
+    }
 }

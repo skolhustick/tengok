@@ -4,6 +4,7 @@ humansize = "2"       # for human-readable sizes
 owo-colors = "4"      # for optional color (nice but not required)
 unicode-width = "0.1" # for accurate character width calculation
 crossbeam-channel = "0.5"
+crossterm = "0.27"
 
 [profile.release]
 opt-level = "s"
